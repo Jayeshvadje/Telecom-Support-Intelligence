@@ -1,14 +1,16 @@
 import os
 from typing import List, Dict, Any
 from google import genai
+from google.genai import types
 
 
 class GeminiEmbedder:
     """
-    Generates text embeddings using Google GenAI SDK (text-embedding-004).
+    Generates text embeddings using Google GenAI SDK ("gemini-embedding-001).
+    Configured for 768 dimensions to match Pinecone index schema.
     """
 
-    def __init__(self, model_name: str = "text-embedding-004"):
+    def __init__(self, model_name: str = "gemini-embedding-001"):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise ValueError("GEMINI_API_KEY environment variable is not set.")
@@ -21,9 +23,13 @@ class GeminiEmbedder:
         if not texts:
             return []
 
+        # Request 768 dimensions explicitly
+        config = types.EmbedContentConfig(output_dimensionality=768)
+
         response = self.client.models.embed_content(
             model=self.model_name,
-            contents=texts
+            contents=texts,
+            config=config
         )
 
         for chunk, embedding_data in zip(chunks, response.embeddings):
