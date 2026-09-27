@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+python-dotenv
+pytest
+httpx
+
+# Ingestion Dependencies (Phase 3)
+PyMuPDF
+pdfplumber
