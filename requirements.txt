@@ -7,5 +7,6 @@ pytest
 httpx
 
 # Ingestion Dependencies (Phase 3)
-PyMuPDF
-pdfplumber
+python-docx
+tiktoken
+google-genai
