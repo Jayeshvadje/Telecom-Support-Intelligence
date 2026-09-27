@@ -8,3 +8,5 @@ httpx
 
 # Ingestion Dependencies (Phase 3)
 python-docx
+tiktoken
+google-genai

@@ -2,46 +2,49 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 from ingestion.loaders.docx_loader import DOCXDocumentLoader
+from ingestion.chunking.policy_chunker import PolicyChunker
+from ingestion.metadata.extractor import MetadataExtractor
 
 
 class IngestionPipeline:
-    """
-    Orchestrates the ingestion process for raw DOCX policy files.
-    """
-
     def __init__(self, input_dir: str):
         self.input_dir = Path(input_dir)
+        self.chunker = PolicyChunker(target_tokens=600, overlap_tokens=100)
 
     def run(self) -> List[Dict[str, Any]]:
         if not self.input_dir.exists():
-            print(f"Directory {self.input_dir} does not exist. Creating it...")
-            self.input_dir.mkdir(parents=True, exist_ok=True)
+            print(f"Directory {self.input_dir} does not exist.")
             return []
 
-        docx_files = list(self.input_dir.glob("*.docx"))
-        print(f"Found {len(docx_files)} DOCX policy documents in '{self.input_dir}'")
+        docx_files = [p for p in self.input_dir.glob("*.docx") if not p.name.startswith("~$")]
+        print(f"Found {len(docx_files)} DOCX policy documents in '{self.input_dir}'\n")
 
-        all_parsed_documents = []
+        all_processed_chunks = []
 
         for docx_path in docx_files:
-            # Skip temporary Office lock files (files starting with ~$)
-            if docx_path.name.startswith("~$"):
-                continue
-
-            print(f"Parsing: {docx_path.name}...")
+            print(f"📄 Processing: {docx_path.name}")
             try:
+                # 1. Load DOCX
                 loader = DOCXDocumentLoader(str(docx_path))
                 parsed_doc = loader.load_and_parse()
-                all_parsed_documents.append(parsed_doc)
-                print(f" Successfully parsed {docx_path.name} ({len(parsed_doc['elements'])} structural elements)")
-            except Exception as e:
-                print(f"❌ Failed to parse {docx_path.name}: {str(e)}")
 
-        return all_parsed_documents
+                # 2. Chunking
+                chunks = self.chunker.create_chunks(parsed_doc)
+
+                # 3. Metadata Enrichment
+                for chunk in chunks:
+                    enriched_chunk = MetadataExtractor.enrich_chunk(chunk)
+                    all_processed_chunks.append(enriched_chunk)
+
+                print(f"   └── Extracted {len(chunks)} policy chunks")
+
+            except Exception as e:
+                print(f"❌ Failed processing {docx_path.name}: {str(e)}")
+
+        print(f"\n Pipeline Complete. Total chunks generated across all files: {len(all_processed_chunks)}")
+        return all_processed_chunks
 
 
 if __name__ == "__main__":
-    input_directory = "ingestion/data"
-    pipeline = IngestionPipeline(input_dir=input_directory)
-    results = pipeline.run()
-    print(f"\nIngestion Pipeline Complete. Total files processed: {len(results)}")
+    pipeline = IngestionPipeline(input_dir="ingestion/data")
+    chunks = pipeline.run()
