@@ -24,7 +24,10 @@ class GeminiEmbedder:
             return []
 
         # Request 768 dimensions explicitly
-        config = types.EmbedContentConfig(output_dimensionality=768)
+        config = types.EmbedContentConfig(
+            task_type="RETRIEVAL_DOCUMENT",
+            output_dimensionality=768
+        )
 
         response = self.client.models.embed_content(
             model=self.model_name,
