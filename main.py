@@ -18,7 +18,7 @@ rag_engine = RAGChain()
 
 
 class QueryRequest(BaseModel):
-    query: str = Field(..., example="How do I transfer an eSIM to a new phone?")
+    query: str = Field(..., json_schema_extra={"example": "How do I transfer an eSIM to a new phone?"})
     top_k: int = Field(default=3, ge=1, le=10)
 
 

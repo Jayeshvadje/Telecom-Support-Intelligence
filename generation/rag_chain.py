@@ -1,10 +1,10 @@
 import os
 from typing import List, Dict, Any
 from google import genai
+from tenacity import retry, stop_after_attempt, wait_random_exponential, retry_if_exception_type
 from retrieval.pinecone_retriever import PineconeRetriever
 
-
-SYSTEM_PROMPT = """You are an Tier-1 Telecom Support Assistant.
+SYSTEM_PROMPT = """You are a Tier-1 Telecom Support Assistant.
 Answer the user's inquiry strictly using the provided policy context below. 
 
 Guidelines:
@@ -21,8 +21,7 @@ Guidelines:
 
 class RAGChain:
     """
-    Combines PineconeRetriever and Gemini generation to execute 
-    Context-Grounded Question Answering.
+    Combines PineconeRetriever and Gemini generation with automatic retry backoff.
     """
 
     def __init__(self, model_name: str = "gemini-2.5-flash"):
@@ -35,7 +34,6 @@ class RAGChain:
         self.retriever = PineconeRetriever()
 
     def _format_context(self, matches: List[Dict[str, Any]]) -> str:
-        """Formats Pinecone search matches into a clean string block for the LLM."""
         context_blocks = []
         for idx, match in enumerate(matches, 1):
             block = (
@@ -47,8 +45,22 @@ class RAGChain:
             context_blocks.append(block)
         return "\n".join(context_blocks)
 
+    @retry(
+        wait=wait_random_exponential(min=1, max=10),
+        stop=stop_after_attempt(5)
+    )
+    def _call_gemini_with_retry(self, prompt: str, system_instruction: str):
+        """Calls Gemini API with exponential backoff on 503/429 spikes."""
+        return self.client.models.generate_content(
+            model=self.model_name,
+            contents=prompt,
+            config={
+                "system_instruction": system_instruction,
+                "temperature": 0.2
+            }
+        )
+
     def answer_query(self, user_query: str, top_k: int = 3) -> Dict[str, Any]:
-        # 1. Retrieve relevant policy chunks
         matches = self.retriever.search(query=user_query, top_k=top_k)
         
         if not matches:
@@ -57,18 +69,14 @@ class RAGChain:
                 "sources": []
             }
 
-        # 2. Format context and system prompt
         formatted_context = self._format_context(matches)
         prompt = f"User Question: {user_query}"
+        sys_instruction = SYSTEM_PROMPT.format(context=formatted_context)
 
-        # 3. Call Gemini Model
-        response = self.client.models.generate_content(
-            model=self.model_name,
-            contents=prompt,
-            config={
-                "system_instruction": SYSTEM_PROMPT.format(context=formatted_context),
-                "temperature": 0.2  # Low temperature for strict factual adherence
-            }
+        # Execute generation call with automated retries
+        response = self._call_gemini_with_retry(
+            prompt=prompt, 
+            system_instruction=sys_instruction
         )
 
         sources = [
@@ -84,20 +92,3 @@ class RAGChain:
             "answer": response.text,
             "sources": sources
         }
-
-
-if __name__ == "__main__":
-    from dotenv import load_dotenv
-    load_dotenv()
-
-    rag = RAGChain()
-    query = "What is the policy for eSIM activation?"
-    print(f"🤖 Processing Query: '{query}'\n")
-    
-    result = rag.answer_query(query)
-    
-    print("=== ANSWER ===")
-    print(result["answer"])
-    print("\n=== CITED SOURCES ===")
-    for src in result["sources"]:
-        print(f"- {src['policy_id']} ({src['document_name']}) | Score: {src['score']}")
