@@ -11,3 +11,4 @@ python-docx
 tiktoken
 google-genai
 pinecone
+streamlit>=1.30.0
